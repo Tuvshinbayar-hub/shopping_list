@@ -1,7 +1,9 @@
+import 'dart:convert' as convert;
 import 'package:flutter/material.dart';
 import 'package:shopping_list/data/category.dart';
 import 'package:shopping_list/models/category.dart';
 import 'package:shopping_list/models/grocery_item.dart';
+import 'package:http/http.dart' as http;
 
 class NewGroceryItemScreen extends StatefulWidget {
   const NewGroceryItemScreen({super.key});
@@ -17,18 +19,61 @@ class _NewGroceryItemScreen extends State<NewGroceryItemScreen> {
   String _enteredName = '';
   int? _enteredQuantity;
   Category _selectedCategory = categories[Categories.vegetables]!;
+  bool _isSending = true;
 
-  void _onSave(context) {
+  void _onSave(context) async {
+    final snackbar = SnackBar(
+      content: Text('Error occured'),
+      action: SnackBarAction(
+          label: 'Retry',
+          onPressed: () {
+            _onSave(context);
+          }),
+    );
     if (!_formKey.currentState!.validate()) {
       return;
     }
-    Navigator.of(context).pop(
-      GroceryItem(
-          id: DateTime.now().toString(),
-          name: _enteredName,
-          quantity: _enteredQuantity!,
-          category: _selectedCategory),
-    );
+
+    _formKey.currentState!.save();
+
+    _isSending = true;
+
+    try {
+      var url = Uri.parse('http://10.0.2.2:5000/api/grocery_item');
+      var response = await http
+          .post(
+        url,
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: convert.json.encode(
+          {
+            'name': _enteredName,
+            'quantity': _enteredQuantity,
+            'category': _selectedCategory.name
+          },
+        ),
+      )
+          .timeout(const Duration(seconds: 3), onTimeout: () {
+        throw Exception('Request time out');
+      });
+
+      if (response.statusCode == 200) {
+        Navigator.of(context).pop(
+          GroceryItem(
+              id: DateTime.now().toString(),
+              name: _enteredName,
+              quantity: _enteredQuantity!,
+              category: _selectedCategory),
+        );
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(snackbar);
+      }
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(snackbar);
+    }
+
+    _isSending = false;
   }
 
   @override
@@ -58,7 +103,7 @@ class _NewGroceryItemScreen extends State<NewGroceryItemScreen> {
                     }
                     return null;
                   },
-                  onChanged: (value) => _enteredName = value,
+                  onSaved: (value) => _enteredName = value!,
                 ),
                 SizedBox(
                   height: 16,
@@ -83,8 +128,8 @@ class _NewGroceryItemScreen extends State<NewGroceryItemScreen> {
                             'Quantity',
                           ),
                         ),
-                        onChanged: (value) =>
-                            _enteredQuantity = int.parse(value),
+                        onSaved: (value) =>
+                            _enteredQuantity = int.parse(value!),
                       ),
                     ),
                     SizedBox(
@@ -107,16 +152,14 @@ class _NewGroceryItemScreen extends State<NewGroceryItemScreen> {
                                   SizedBox(
                                     width: 8,
                                   ),
-                                  Text(item.value.name)
+                                  Text(item.value.name),
                                 ],
                               ),
                             ),
                           )
                           .toList(),
                       onChanged: (value) {
-                        // setState(() {
                         _selectedCategory = value!;
-                        // });
                       },
                     ))
                   ],
